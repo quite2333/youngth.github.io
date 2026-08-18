@@ -258,7 +258,12 @@ function ensureAudio(){
   const Ctx=window.AudioContext||window.webkitAudioContext;
   if(!Ctx) return;
   try{ AC=new Ctx(); }catch(e){ return; }
-  master=AC.createGain(); master.gain.value=.8; master.connect(AC.destination);
+  master=AC.createGain(); master.gain.value=.72;
+  /* 主输出硬限幅器：任何叠加峰值都不会超过 -12dB，杜绝数字削波炸麦 */
+  const limiter=AC.createDynamicsCompressor();
+  limiter.threshold.value=-12; limiter.knee.value=6; limiter.ratio.value=18;
+  limiter.attack.value=.002; limiter.release.value=.25;
+  master.connect(limiter); limiter.connect(AC.destination);
   /* 2 秒棕色噪声缓冲；头尾交叉淡化，实现无缝循环（无接缝咔哒声） */
   const len=AC.sampleRate*2, buf=AC.createBuffer(1,len,AC.sampleRate), d=buf.getChannelData(0);
   let last=0;
@@ -280,17 +285,18 @@ function startDrone(){
   const src=AC.createBufferSource(); src.buffer=noiseBuf; src.loop=true;
   const lp1=AC.createBiquadFilter(); lp1.type='lowpass'; lp1.frequency.value=260; lp1.Q.value=.4;
   droneLP=AC.createBiquadFilter(); droneLP.type='lowpass'; droneLP.frequency.value=150; droneLP.Q.value=.6;
-  const ng=AC.createGain(); ng.gain.value=.5;
+  /* 外放保护：小屏扬声器播不出次低频，压低噪声驱动，避免振膜拍边（中频气息负责可听度） */
+  const ng=AC.createGain(); ng.gain.value=PHONE?.42:.5;
   src.connect(lp1); lp1.connect(droneLP); droneLP.connect(ng); ng.connect(droneGain);
-  /* 一丝极轻的「生命维持」气息：480Hz 窄带，外放也能隐约感知的纹理 */
+  /* 一丝「生命维持」气息：480Hz 窄带；手机上适当提亮（中频不拍边），外放才听得到 */
   const bp=AC.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=480; bp.Q.value=.8;
-  const bg2=AC.createGain(); bg2.gain.value=.07;
+  const bg2=AC.createGain(); bg2.gain.value=PHONE?.18:.07;
   src.connect(bp); bp.connect(bg2); bg2.connect(droneGain);
   /* L2 地鸣：55/55.4Hz 失谐对 + 41Hz 低五度，0.8Hz 轻颤「呼噜」 */
   const o1=AC.createOscillator(); o1.frequency.value=55;
   const o2=AC.createOscillator(); o2.frequency.value=55.4;
   const o3=AC.createOscillator(); o3.frequency.value=41;
-  const og=AC.createGain(); og.gain.value=.5;
+  const og=AC.createGain(); og.gain.value=PHONE?.26:.5; /* 外放保护：地鸣驱动减半 */
   o1.connect(og); o2.connect(og); o3.connect(og); og.connect(droneGain);
   const purr=AC.createOscillator(); purr.frequency.value=.8;
   const purrG=AC.createGain(); purrG.gain.value=.12;
@@ -310,7 +316,7 @@ function startDrone(){
   src.start(t); o1.start(t); o2.start(t); o3.start(t); purr.start(t); breath.start(t); drift.start(t);
   droneOsc1=o1;
   droneGain.connect(master); /* 干声：厚重的内核 */
-  const droneVerb=AC.createGain(); droneVerb.gain.value=.55;
+  const droneVerb=AC.createGain(); droneVerb.gain.value=PHONE?.4:.55;
   droneGain.connect(droneVerb); droneVerb.connect(verbSend); /* L4 虚空：无尽大厅混响 */
   /* 电影开场式淡入：4 秒把听觉缓缓拉入宇宙 */
   droneGain.gain.setValueAtTime(0,t);
@@ -415,7 +421,7 @@ function playBoom(x){
   const sub2=AC.createOscillator(); sub2.type='sine'; sub2.frequency.value=100;
   const sg=AC.createGain();
   sg.gain.setValueAtTime(.0001,t0);
-  sg.gain.exponentialRampToValueAtTime(.32,t0+1.6);  /* 慢起 */
+  sg.gain.exponentialRampToValueAtTime(PHONE?.13:.32,t0+1.6);  /* 慢起（外放保护：手机压低次低频） */
   sg.gain.exponentialRampToValueAtTime(.0001,t0+5.5); /* 长释放 */
   sub.connect(sg); sub2.connect(sg); sg.connect(master);
   sub.start(t0); sub.stop(t0+6); sub2.start(t0); sub2.stop(t0+6);
@@ -487,7 +493,7 @@ function buildVerb(){
     }
   }
   const conv=AC.createConvolver(); conv.buffer=ir;
-  const out=AC.createGain(); out.gain.value=.75;
+  const out=AC.createGain(); out.gain.value=.68;
   verbSend.connect(conv); conv.connect(out); out.connect(master);
 }
 function toggleMute(){
@@ -506,6 +512,7 @@ let dots=null, stars=[], dust=[], burst=[], waves=[], glows=[];
 let target=null, pullT=0, lastTY=null;
 let autoHoldAt=null, autoHeld=false;
 let swipePx=520; /* 手机屏上更灵敏：滑动单位距离自适应 */
+let PHONE=false; /* 小屏外放：次低频会驱动手机扬声器拍边，需压低 */
 const K=2.1e6; /* 引力常数的「艺术化」标定 */
 
 /* ---- 布局 ---- */
@@ -516,6 +523,7 @@ function resize(){
   ctx.setTransform(DPR,0,0,DPR,0,0);
   R0=Math.min(W,H)*.27; R3=R0*.5; CRIT=R0*.86;
   swipePx = Math.min(W,H)<560 ? 420 : 520;
+  PHONE = Math.min(W,H)<560;
   if(phase<2) initDots();
   buildStars();
 }
