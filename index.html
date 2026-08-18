@@ -267,9 +267,9 @@ function ensureAudio(){
       pre.connect(hp); pre=hp;
     }
   }
-  /* 硬限幅：任何叠加峰值都不会削波 */
+  /* 硬限幅：阈值 -10dB，稳态底噪（约 -10.5dB）保持在阈值之下，压缩器不会对噪声包络"追尾"产生磨砂感 */
   const limiter=AC.createDynamicsCompressor();
-  limiter.threshold.value=-14; limiter.knee.value=4; limiter.ratio.value=20;
+  limiter.threshold.value=-10; limiter.knee.value=4; limiter.ratio.value=20;
   limiter.attack.value=.001; limiter.release.value=.2;
   pre.connect(limiter);
   /* 软削波：tanh 曲线做采样级天花板，瞬时峰值永远碰不到 0dB */
@@ -326,12 +326,10 @@ function startDrone(){
   const purr=AC.createOscillator(); purr.frequency.value=.8;
   const purrG=AC.createGain(); purrG.gain.value=.12;
   purr.connect(purrG); purrG.connect(og.gain);
-  /* L3 呼吸：10 秒周期 LFO 同步驱动音量与滤波截止，宇宙潮汐（深度放缓，防共振波动） */
+  /* L3 呼吸：10 秒周期 LFO 只驱动音量（不再扫滤波截止 —— 滤波扫频会产生刮擦声） */
   const breath=AC.createOscillator(); breath.frequency.value=.1;
   const bGain=AC.createGain(); bGain.gain.value=.07;
-  const bCut=AC.createGain(); bCut.gain.value=45;
   breath.connect(bGain); bGain.connect(droneGain.gain);
-  breath.connect(bCut); bCut.connect(droneLP.frequency);
   /* 极慢音高漂移：物理空间的辽阔感 */
   const drift=AC.createOscillator(); drift.frequency.value=.05;
   const driftG=AC.createGain(); driftG.gain.value=2.5;
@@ -340,20 +338,25 @@ function startDrone(){
   drift.connect(driftG2); driftG2.connect(o3.frequency);
   src.start(t); o1.start(t); o2.start(t); o3.start(t); purr.start(t); breath.start(t); drift.start(t);
   droneOsc1=o1;
-  droneGain.connect(master); /* 干声：厚重的内核 */
+  /* 静态 EQ 整形：600Hz 严格平滑低通 + 1-3kHz 双陷波 —— 「厚玻璃」后的闷感，抹掉所有摩擦纹理 */
+  const lpClean=AC.createBiquadFilter(); lpClean.type='lowpass'; lpClean.frequency.value=600; lpClean.Q.value=.5;
+  const n1=AC.createBiquadFilter(); n1.type='notch'; n1.frequency.value=1400; n1.Q.value=2.2;
+  const n2=AC.createBiquadFilter(); n2.type='notch'; n2.frequency.value=2600; n2.Q.value=2.2;
+  const shapeOut=AC.createGain(); shapeOut.gain.value=1;
+  droneGain.connect(lpClean); lpClean.connect(n1); n1.connect(n2); n2.connect(shapeOut);
+  shapeOut.connect(master); /* 干声：厚重的内核 */
   const droneVerb=AC.createGain(); droneVerb.gain.value=PHONE?.4:.5;
-  droneGain.connect(droneVerb); droneVerb.connect(verbSend); /* L4 虚空：无尽大厅混响 */
+  shapeOut.connect(droneVerb); droneVerb.connect(verbSend); /* L4 虚空：无尽大厅混响 */
   /* 电影开场式淡入：4 秒把听觉缓缓拉入宇宙 */
   droneGain.gain.setValueAtTime(0,t);
   droneGain.gain.linearRampToValueAtTime(.03+droneLevel*.17,t+4);
   window.__droneGainValue=()=>droneGain?droneGain.gain.value:null;
 }
-function setDrone(level){ /* 引力紧张度 0..1 */
+function setDrone(level){ /* 引力紧张度 0..1（只动音量与音高，滤波截止保持静态） */
   if(!AC||!droneGain) return;
   droneLevel=level;
   const t=AC.currentTime;
   droneGain.gain.setTargetAtTime(.03+level*.17,t,.7);
-  if(droneLP) droneLP.frequency.setTargetAtTime((PHONE?200:150)+level*240,t,.8);
   if(droneOsc1) droneOsc1.frequency.setTargetAtTime((PHONE?164:54)+level*(PHONE?8:10),t,1.5);
 }
 function duckDrone(){ /* 音频闪避：碰撞瞬间压低底噪 50%，2 秒后慢慢恢复 */
