@@ -311,7 +311,7 @@ function startDrone(){
   const src=AC.createBufferSource(); src.buffer=noiseBuf; src.loop=true;
   const lp1=AC.createBiquadFilter(); lp1.type='lowpass'; lp1.frequency.value=300; lp1.Q.value=.3;
   droneLP=AC.createBiquadFilter(); droneLP.type='lowpass'; droneLP.frequency.value=PHONE?200:150; droneLP.Q.value=PHONE?.35:.6;
-  const ng=AC.createGain(); ng.gain.value=PHONE?.42:.5;
+  const ng=AC.createGain(); ng.gain.value=PHONE?.46:.5;
   src.connect(lp1); lp1.connect(droneLP); droneLP.connect(ng); ng.connect(droneGain);
   /* 一丝「生命维持」气息：480Hz 窄带；手机上适当提亮（中频不拍边），外放才听得到 */
   const bp=AC.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=480; bp.Q.value=.7;
@@ -321,7 +321,7 @@ function startDrone(){
   const o1=AC.createOscillator(); o1.frequency.value=PHONE?164.8:55;
   const o2=AC.createOscillator(); o2.frequency.value=PHONE?165.6:55.4;
   const o3=AC.createOscillator(); o3.frequency.value=PHONE?246.9:41;
-  const og=AC.createGain(); og.gain.value=PHONE?.3:.5; /* 手机上移至温暖区后维持可闻 */
+  const og=AC.createGain(); og.gain.value=PHONE?.28:.5; /* 手机上移至温暖区后维持可闻 */
   o1.connect(og); o2.connect(og); o3.connect(og); og.connect(droneGain);
   const purr=AC.createOscillator(); purr.frequency.value=.8;
   const purrG=AC.createGain(); purrG.gain.value=.12;
@@ -338,12 +338,13 @@ function startDrone(){
   drift.connect(driftG2); driftG2.connect(o3.frequency);
   src.start(t); o1.start(t); o2.start(t); o3.start(t); purr.start(t); breath.start(t); drift.start(t);
   droneOsc1=o1;
-  /* 静态 EQ 整形：600Hz 严格平滑低通 + 1-3kHz 双陷波 —— 「厚玻璃」后的闷感，抹掉所有摩擦纹理 */
+  /* 静态 EQ 整形：600Hz 严格平滑低通 + 1-3kHz 双陷波 + 温暖带柔化 —— 「厚玻璃」后的闷感 */
   const lpClean=AC.createBiquadFilter(); lpClean.type='lowpass'; lpClean.frequency.value=600; lpClean.Q.value=.5;
   const n1=AC.createBiquadFilter(); n1.type='notch'; n1.frequency.value=1400; n1.Q.value=2.2;
   const n2=AC.createBiquadFilter(); n2.type='notch'; n2.frequency.value=2600; n2.Q.value=2.2;
-  const shapeOut=AC.createGain(); shapeOut.gain.value=1;
-  droneGain.connect(lpClean); lpClean.connect(n1); n1.connect(n2); n2.connect(shapeOut);
+  const warmEq=AC.createBiquadFilter(); warmEq.type='peaking'; warmEq.frequency.value=215; warmEq.gain.value=-2; warmEq.Q.value=.8; /* 170-260Hz 峰谷，柔化音头 */
+  const shapeOut=AC.createGain(); shapeOut.gain.value=.7; /* 整体幅值 -30% */
+  droneGain.connect(lpClean); lpClean.connect(n1); n1.connect(n2); n2.connect(warmEq); warmEq.connect(shapeOut);
   shapeOut.connect(master); /* 干声：厚重的内核 */
   const droneVerb=AC.createGain(); droneVerb.gain.value=PHONE?.4:.5;
   shapeOut.connect(droneVerb); droneVerb.connect(verbSend); /* L4 虚空：无尽大厅混响 */
