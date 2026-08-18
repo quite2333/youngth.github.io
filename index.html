@@ -313,33 +313,37 @@ function startDrone(){
   const t=AC.currentTime;
   droneGain=AC.createGain(); droneGain.gain.value=0;
   droneLevel=.35;
-  /* 白噪床：回到原版 —— 深沉低通的棕色噪声，闷在「厚玻璃」里 */
+  /* L1 地基：深沉的棕色噪声 —— 生命维持系统的遥远嗡鸣（闷、重、远） */
   const src=AC.createBufferSource(); src.buffer=noiseBuf; src.loop=true;
-  const lp1=AC.createBiquadFilter(); lp1.type='lowpass'; lp1.frequency.value=280; lp1.Q.value=.3;
-  const lp2=AC.createBiquadFilter(); lp2.type='lowpass'; lp2.frequency.value=170; lp2.Q.value=.4;
-  const bedG=AC.createGain(); bedG.gain.value=.45;
+  const lp1=AC.createBiquadFilter(); lp1.type='lowpass'; lp1.frequency.value=300; lp1.Q.value=.3;
+  const lp2=AC.createBiquadFilter(); lp2.type='lowpass'; lp2.frequency.value=170; lp2.Q.value=.3;
+  const bedG=AC.createGain(); bedG.gain.value=PHONE?.62:.5; /* 手机地鸣被高通滤除，白噪床补增益维持可闻 */
   src.connect(lp1); lp1.connect(lp2); lp2.connect(bedG); bedG.connect(droneGain);
-  /* 原版的生命维持气息：480Hz 窄带，极轻 */
+  /* 生命维持气息：480Hz 窄带，极轻 */
   const bp=AC.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=480; bp.Q.value=.7;
-  const bg2=AC.createGain(); bg2.gain.value=.07;
+  const bg2=AC.createGain(); bg2.gain.value=PHONE?.1:.07;
   src.connect(bp); bp.connect(bg2); bg2.connect(droneGain);
-  /* 循环气流层：轻柔的高频空气声（约 2.2-3.4kHz），持续不断、无缝循环 */
-  const w=AC.createBufferSource(); w.buffer=windBuf; w.loop=true;
-  const air=AC.createBiquadFilter(); air.type='bandpass'; air.frequency.value=2600; air.Q.value=.7;
-  const airG=AC.createGain(); airG.gain.value=.26;
-  w.connect(air); air.connect(airG); airG.connect(droneGain);
-  /* 呼吸 LFO：10 秒音量起伏（原版） */
+  /* L2 地鸣：55/55.4Hz 失谐对 + 41Hz 低五度，缓慢拍频的「呼噜」压力感
+     手机外放由主链 120Hz 三极点高通在到达扬声器前滤除，耳机/桌面端完整保留 */
+  const o1=AC.createOscillator(); o1.frequency.value=55;
+  const o2=AC.createOscillator(); o2.frequency.value=55.4;
+  const o3=AC.createOscillator(); o3.frequency.value=41;
+  const og=AC.createGain(); og.gain.value=.5;
+  o1.connect(og); o2.connect(og); o3.connect(og); og.connect(droneGain);
+  /* L3 呼吸：10 秒 LFO 同步驱动音量与低通截止（低 Q + 浅调制，无共振、无刮擦） */
   const breath=AC.createOscillator(); breath.frequency.value=.1;
-  const bGain=AC.createGain(); bGain.gain.value=.05;
+  const bGain=AC.createGain(); bGain.gain.value=.07;
+  const bCut=AC.createGain(); bCut.gain.value=50;
   breath.connect(bGain); bGain.connect(droneGain.gain);
-  /* 顶盖：5kHz 平滑低通，只挡刺耳超高频，让气流层通过 */
-  const lpClean=AC.createBiquadFilter(); lpClean.type='lowpass'; lpClean.frequency.value=5000; lpClean.Q.value=.5;
+  breath.connect(bCut); bCut.connect(lp2.frequency);
+  /* 静态平滑低通：再压一层毛刺，保持「厚玻璃」闷感 */
+  const lpClean=AC.createBiquadFilter(); lpClean.type='lowpass'; lpClean.frequency.value=900; lpClean.Q.value=.4;
   const shapeOut=AC.createGain(); shapeOut.gain.value=.8;
   droneGain.connect(lpClean); lpClean.connect(shapeOut);
   shapeOut.connect(master); /* 干声 */
-  const droneVerb=AC.createGain(); droneVerb.gain.value=PHONE?.4:.5;
-  shapeOut.connect(droneVerb); droneVerb.connect(verbSend); /* 送入无尽大厅混响 */
-  src.start(t); w.start(t); breath.start(t);
+  const droneVerb=AC.createGain(); droneVerb.gain.value=PHONE?.4:.55;
+  shapeOut.connect(droneVerb); droneVerb.connect(verbSend); /* L4 虚空：无尽大厅混响 */
+  src.start(t); o1.start(t); o2.start(t); o3.start(t); breath.start(t);
   /* 电影开场式淡入：4 秒把听觉缓缓拉入宇宙 */
   droneGain.gain.setValueAtTime(0,t);
   droneGain.gain.linearRampToValueAtTime(.04+droneLevel*.13,t+4);
