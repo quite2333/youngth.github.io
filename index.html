@@ -313,60 +313,54 @@ function startDrone(){
   const t=AC.currentTime;
   droneGain=AC.createGain(); droneGain.gain.value=0;
   droneLevel=.35;
-  /* 白噪床：极低、被「厚玻璃」罩住的棕色噪声（只有存在感，没有攻击性） */
+  /* 白噪床：回到原版 —— 深沉低通的棕色噪声，闷在「厚玻璃」里 */
   const src=AC.createBufferSource(); src.buffer=noiseBuf; src.loop=true;
-  const bedLP=AC.createBiquadFilter(); bedLP.type='lowpass'; bedLP.frequency.value=220; bedLP.Q.value=.35;
-  const bedG=AC.createGain(); bedG.gain.value=.3;
-  src.connect(bedLP); bedLP.connect(bedG); bedG.connect(droneGain);
-  /* 太空列车风声：带通白噪（频率比白噪床高一截），纯噪声 + 带通，物理上不可能拍边 */
-  const w1=AC.createBufferSource(); w1.buffer=windBuf; w1.loop=true;
-  const wbp1=AC.createBiquadFilter(); wbp1.type='bandpass'; wbp1.frequency.value=560; wbp1.Q.value=.7;
-  const wg1=AC.createGain(); wg1.gain.value=1.1;
-  w1.connect(wbp1); wbp1.connect(wg1);
-  const w2=AC.createBufferSource(); w2.buffer=windBuf; w2.loop=true;
-  const wbp2=AC.createBiquadFilter(); wbp2.type='bandpass'; wbp2.frequency.value=1250; wbp2.Q.value=1.0;
-  const wg2=AC.createGain(); wg2.gain.value=.2;
-  w2.connect(wbp2); wbp2.connect(wg2);
-  const windGain=AC.createGain(); windGain.gain.value=1;
-  wg1.connect(windGain); wg2.connect(windGain);
-  /* 列车经过：~18 秒周期的涌动 LFO（风声缓缓涨起又退去） */
-  const pass=AC.createOscillator(); pass.frequency.value=.055;
-  const passG=AC.createGain(); passG.gain.value=.3;
-  pass.connect(passG); passG.connect(windGain.gain);
-  /* 呼吸 LFO：整体音量缓慢起伏 */
+  const lp1=AC.createBiquadFilter(); lp1.type='lowpass'; lp1.frequency.value=280; lp1.Q.value=.3;
+  const lp2=AC.createBiquadFilter(); lp2.type='lowpass'; lp2.frequency.value=170; lp2.Q.value=.4;
+  const bedG=AC.createGain(); bedG.gain.value=.45;
+  src.connect(lp1); lp1.connect(lp2); lp2.connect(bedG); bedG.connect(droneGain);
+  /* 原版的生命维持气息：480Hz 窄带，极轻 */
+  const bp=AC.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=480; bp.Q.value=.7;
+  const bg2=AC.createGain(); bg2.gain.value=.07;
+  src.connect(bp); bp.connect(bg2); bg2.connect(droneGain);
+  /* 循环气流层：轻柔的高频空气声（约 2.2-3.4kHz），持续不断、无缝循环 */
+  const w=AC.createBufferSource(); w.buffer=windBuf; w.loop=true;
+  const air=AC.createBiquadFilter(); air.type='bandpass'; air.frequency.value=2600; air.Q.value=.7;
+  const airG=AC.createGain(); airG.gain.value=.26;
+  w.connect(air); air.connect(airG); airG.connect(droneGain);
+  /* 呼吸 LFO：10 秒音量起伏（原版） */
   const breath=AC.createOscillator(); breath.frequency.value=.1;
   const bGain=AC.createGain(); bGain.gain.value=.05;
   breath.connect(bGain); bGain.connect(droneGain.gain);
-  windGain.connect(droneGain);
-  /* 静态顶盖：1.8kHz 平滑低通，风声保持柔滑不刺 */
-  const lpClean=AC.createBiquadFilter(); lpClean.type='lowpass'; lpClean.frequency.value=1800; lpClean.Q.value=.5;
-  const shapeOut=AC.createGain(); shapeOut.gain.value=.85;
+  /* 顶盖：5kHz 平滑低通，只挡刺耳超高频，让气流层通过 */
+  const lpClean=AC.createBiquadFilter(); lpClean.type='lowpass'; lpClean.frequency.value=5000; lpClean.Q.value=.5;
+  const shapeOut=AC.createGain(); shapeOut.gain.value=.8;
   droneGain.connect(lpClean); lpClean.connect(shapeOut);
   shapeOut.connect(master); /* 干声 */
   const droneVerb=AC.createGain(); droneVerb.gain.value=PHONE?.4:.5;
   shapeOut.connect(droneVerb); droneVerb.connect(verbSend); /* 送入无尽大厅混响 */
-  src.start(t); w1.start(t); w2.start(t); pass.start(t); breath.start(t);
+  src.start(t); w.start(t); breath.start(t);
   /* 电影开场式淡入：4 秒把听觉缓缓拉入宇宙 */
   droneGain.gain.setValueAtTime(0,t);
-  droneGain.gain.linearRampToValueAtTime(.05+droneLevel*.13,t+4);
+  droneGain.gain.linearRampToValueAtTime(.04+droneLevel*.13,t+4);
   window.__droneGainValue=()=>droneGain?droneGain.gain.value:null;
 }
 function setDrone(level){ /* 引力紧张度 0..1（只动音量，无任何扫频） */
   if(!AC||!droneGain) return;
   droneLevel=level;
   const t=AC.currentTime;
-  droneGain.gain.setTargetAtTime(.05+level*.13,t,.7);
+  droneGain.gain.setTargetAtTime(.04+level*.13,t,.7);
 }
 function duckDrone(){ /* 音频闪避：碰撞瞬间压低底噪 50%，2 秒后慢慢恢复 */
   if(!AC||!droneGain) return;
   const t=AC.currentTime;
   droneGain.gain.cancelScheduledValues(t);
-  droneGain.gain.setTargetAtTime((.03+droneLevel*.17)*.5,t,.08);
+  droneGain.gain.setTargetAtTime((.04+droneLevel*.13)*.5,t,.08);
   setTimeout(()=>{
     if(!AC||!droneGain) return;
     const t2=AC.currentTime;
     droneGain.gain.cancelScheduledValues(t2);
-    droneGain.gain.setTargetAtTime(.03+droneLevel*.17,t2,.9);
+    droneGain.gain.setTargetAtTime(.04+droneLevel*.13,t2,.9);
   },2000);
 }
 function playBoom(x){
